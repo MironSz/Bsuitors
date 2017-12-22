@@ -5,10 +5,11 @@
 #include <set>
 #include <list>
 #include <algorithm>
+#include "blimit.cpp"
 
 using namespace std;
 
-using kraw = tuple<int,int,int>;///koszt, from,to
+using kraw = typename tuple<int,int,int>;///koszt, from,to
 
 struct cmp_set {
     bool operator()(kraw k1, kraw k2){
@@ -33,7 +34,10 @@ vector<set<kraw>> S;//ci ktorzy mi sie oświadczyli
 vector<set<kraw>> T;//ci którym się oświadczyłem
 list<int> Q;//Q
 set<int> in_Q;
-int n;
+int n,method;
+
+map<int,int> old_id_to_new;
+map<int,int> new_id_to_old;
 
 
 void update(int from, kraw& k){
@@ -72,7 +76,7 @@ void match_sequence(){
         sort(k.begin(), k.end());
     }
 
-    {
+    {//To tworzy kolejkę Q
         set<int> already_added;
         for(int i = 0;i <N.size();i++){
             for(kraw k:N[i]){
@@ -88,6 +92,7 @@ void match_sequence(){
         }
     }
 
+    
     while(Q.empty() == false){
         int u = Q.front();
         Q.pop_front();
@@ -99,6 +104,34 @@ void match_sequence(){
             i++;
         }
     }
+}
+
+int skaluj_krawędzie(vector<kraw> &old_id, map<int,int> &map_old_to_new, map<int,int> &map_new_to_old){
+    int prev = -1;
+    int new_id = 0;
+    vector<int> existing_nodes;
+    
+    for(auto id : old_id){
+        existing_nodes.push_back(get<1>(old_id));
+        existing_nodes.push_back(get<2>(old_id));
+    }
+    
+    sort(exising_node.begin(),existing_nodes.end());//Pararel
+    
+    for(int id : existings_nodes){
+        if(id != prev){
+            map_old_to_new.insert(make_pair(id,new_id));
+            map_new_to_old.insert(make_pair(new_id,id));
+            new_id++;
+            prev=id;
+        }
+    }
+    
+    for(auto k : old_id){
+        get<1>(k) = map_old_to_new[get<1>(k)];
+    }
+    
+    return new_id;
 }
 
 void create_graph(string file){
@@ -115,22 +148,23 @@ void create_graph(string file){
             }
         }
     }
-    //TODO skalowanie :(
-
-    sort(readed.begin(),readed.end());
-
-    for(auto k : readed){
+    //TODO s
+   n=skaluj_krawedzie(readed,old_id_to_new,new_id_to_old);
+   for(i=0;i<n;i++)
+       b.push_back(blimit(method,new_id_to_old[i]));
+    
+   for(auto k : readed){
         N[get<1>(k)].push_back(k);
         N[get<2>(k)].push_back(k);
     }
-
-
 }
 
 
 void wypisz_adorowanych(){
 
 }
+
+
 int main(int argc, char* argv[]) {
     if (argc != 4) {
         std::cerr << "usage: " << argv[0] << " thread-count inputfile b-limit" << std::endl;
