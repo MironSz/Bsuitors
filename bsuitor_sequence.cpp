@@ -6,11 +6,10 @@
 #include <set>
 #include <list>
 #include <algorithm>
-#include "blimit.cpp"
+#include "blimit2.cpp"
 #include<map>
 
-
-#define DR if(0)
+#define DR if(1)
 using namespace std;
 
 using kraw = tuple<int, int, int, int>;///koszt, from,to, id
@@ -59,21 +58,23 @@ map<int, int> old_id_to_new;
 map<int, int> new_id_to_old;
 
 void update(int from, kraw &k) {
-    DR cout << "UPDATE, ilosc adorujacych cel: " << S[destin(from, k)].size() << endl;
+    DR { cout << "UPDATE, ilosc adorujacych cel: " << S[destin(from, k)].size() << endl; }
     if (S[destin(from, k)].size() == b[destin(from, k)]) {
         auto deleted = *(S[destin(from, k)].begin());
-        DR cout << destin(destin(from, k), deleted) << " przestaje adorowac " << destin(from, k) << "  ," << from
-             << " zaczyna\n";
-        if (in_Q.find(destin(destin(from, k), deleted)) == in_Q.end() || true) {
+        DR {
+            cout << destin(destin(from, k), deleted) << " przestaje adorowac " << destin(from, k) << "  ," << from
+                 << " zaczyna\n";
+        }
+        if (in_Q.find(destin(destin(from, k), deleted)) == in_Q.end()) {
             Q.push_back(destin(destin(from, k), deleted));
             in_Q.insert(destin(destin(from, k), deleted));
         }
         S[destin(from, k)].erase(deleted);
         T[destin(destin(from, k), deleted)].erase(deleted);
     }
-
     T[from].insert(k);
     S[destin(from, k)].insert(k);
+    DR { cout << "Updated\n"; }
 }
 
 kraw last(int u) {
@@ -85,7 +86,7 @@ kraw last(int u) {
 
 bool check_match(int from, kraw &k) {
     kraw v = last(destin(from, k));
-    DR cout << "      sprawdzam match " << from << " z " << destin(from, k) << " last:" << price(v) << endl;
+    DR { cout << "      sprawdzam match " << from << " z " << destin(from, k) << " last:" << price(v) << endl; }
     if (v < k) {
         return true;
     } else {
@@ -115,37 +116,47 @@ void match_sequence() {
                 if (already_added.find(get<2>(k)) == already_added.end()) {
                     already_added.insert(get<2>(k));
                     Q.push_back(get<2>(k));
-                    DR cout << "DODALEM " << get<2>(k) << endl;
+                    DR { cout << "DODALEM " << get<2>(k) << endl; }
                 }
                 if (already_added.find(get<1>(k)) == already_added.end()) {
                     already_added.insert(get<1>(k));
                     Q.push_back(get<1>(k));
-                    DR cout << "DODALEM " << get<1>(k) << endl;
+                    DR { cout << "DODALEM " << get<1>(k) << endl; }
 
                 }
             }
         }
+        in_Q=already_added;
     }
 
     while (Q.empty() == false) {
         int u = Q.front();
         Q.pop_front();
         int i = 0;//TODO
-        DR cout << "Bede probowal przerobic : " << u << "(" << T[u].size() << ")" << endl;
+        DR { cout << "Bede probowal przerobic : " << u << "(" << T[u].size() << ")" << endl; }
         while (T[u].size() < b[u] && i < N[u].size()) {
-            DR cout << " Przerabiam " << u << " sprawdzam czy moggo sparowac z " << destin(u, N[u][i])
-                 << " ilosc sasiadow = " << N[u].size() << endl;
+            DR {
+                cout << " Przerabiam " << u << " sprawdzam czy moggo sparowac z " << destin(u, N[u][i])
+                     << " ilosc sasiadow = " << N[u].size() << endl;
+            }
             if (check_match(u, N[u][i])) {
                 update(u, N[u][i]);
             }
+            DR { cout << "indeed updated\n"; }
             i++;
         }
-        DR cout << "zawartosc kolejki : ";
-        DR for (auto a : Q) {
-            cout << a << " ";
+        DR { cout << "zawartosc kolejki : "; }
+        DR {
+            for (auto a : Q) {
+                cout << a << " ";
+            }
         }
-//        in_Q.erase(in_Q.find(u));
-        DR cout << endl << endl;
+        DR { cout << endl; }
+        if (in_Q.find(u) != in_Q.end()) {
+            DR cout <<"Erasing from in_Q\n";
+            in_Q.erase(in_Q.find(u));
+        }
+        DR { cout << endl << endl; }
     }
 }
 
@@ -179,32 +190,31 @@ int skaluj_krawedzie(vector <kraw> &old_id, map<int, int> &map_old_to_new, map<i
 }
 
 void create_graph(char *file, int b_limit) {
-    ifstream input_file("test1.txt");
+    ifstream input_file(file);
     string bufor;
     vector <kraw> readed;
     vector<int> existing_nodes;
     int a, b1, c, d = 0;
-    DR cout << "Czy otworzylem plik?\n";
+    DR { cout << "Czy otworzylem plik?\n"; }
     if (input_file.is_open()) {
-        DR cout << "TAK!\n";
+        DR { cout << "TAK!\n"; }
         while (getline(input_file, bufor)) {
-            DR cout << "Wczytalem linie: (" << bufor << ")\n";
+            DR { cout << "Wczytalem linie: (" << bufor << ")\n"; }
+
             if (bufor[0] != '#') {
                 sscanf(&(bufor[0]), "%d%d%d", &a, &b1, &c);
-                DR cout << "wczytalem a,b,c " << a << b1 << c << "\n";
+                DR { cout << "wczytalem a,b,c " << a << b1 << c << "\n"; }
                 readed.push_back(make_tuple(c, a, b1, d++));
-                DR cout << "d: " << d << endl;
             }
         }
-        DR cout << "Wczytalem linie: (" << bufor << ")\n";
     }
 
     n = skaluj_krawedzie(readed, old_id_to_new, new_id_to_old);
-    DR cout << "n = " << n << endl;
+    DR { cout << "n = " << n << endl; }
     b.resize(n + 1);
     for (int i = 0; i < n; i++) {
         b[i] = bvalue(method, new_id_to_old[i]);
-       DR  cout << "kolejne b: " << bvalue(method, new_id_to_old[i]) << "  " << i << "\n";
+        DR { cout << "kolejne b: " << bvalue(method, new_id_to_old[i]) << "  " << i << "\n"; }
     }
 
     N.resize(n + 1);
@@ -219,25 +229,26 @@ void create_graph(char *file, int b_limit) {
     for (auto &k : N) {
         sort(k.begin(), k.end(), comp);
         for (auto k2 : k) {
-           DR  cout << get<0>(k2) << "  ";
+            DR { cout << get<0>(k2) << "  "; }
         }
-        DR cout << endl;
+        DR { cout << endl; }
     }
 }
 
-void clear_graph(){
-    for(auto a:S){
+void clear_graph() {
+    for (auto a:S) {
         a.clear();
     }
-    for(auto a:T){
+    for (auto a:T) {
         a.clear();
     }
     in_Q.clear();
 }
+
 void generate_b() {
     for (int i = 0; i < n; i++) {
         b[i] = bvalue(method, new_id_to_old[i]);
-        DR cout << "kolejne b: " << bvalue(method, new_id_to_old[i]) << "  " << i <<"  "<<method<< "\n";
+        DR { cout << "kolejne b: " << bvalue(method, new_id_to_old[i]) << "  " << i << "  " << method << "\n"; }
     }
 }
 
@@ -266,7 +277,7 @@ int main(int argc, char *argv[]) {
     for (method = 0; method <= b_limit; method++) {
         generate_b();
         match_sequence();
-        cout << endl << count_result()<<endl;
+        cout << endl << count_result() << endl;
         clear_graph();
     }
 //    wypisz_adorowanych();
