@@ -9,7 +9,7 @@
 #include "blimit2.cpp"
 #include<map>
 
-#define DR if(1)
+#define DR if(0)
 using namespace std;
 
 using kraw = tuple<int, int, int, int>;///koszt, from,to, id
@@ -19,10 +19,10 @@ bool comp(kraw k1, kraw k2) {
         return (get<0>(k1) > get<0>(k2));
     }
     if (get<1>(k1) != get<1>(k2)) {
-        return (get<1>(k1) > get<1>(k2));
+        return (get<1>(k1) < get<1>(k2));
     }
     if (get<2>(k1) != get<2>(k2)) {
-        return (get<2>(k1) > get<2>(k2));
+        return (get<2>(k1) < get<2>(k2));
     }
     return (get<3>(k1) > get<3>(k2));
 }
@@ -53,7 +53,7 @@ vector <set<kraw>> T;//ci którym się oświadczyłem
 list<int> Q;//Q
 set<int> in_Q;
 int n, method;
-
+vector<int> it;
 map<int, int> old_id_to_new;
 map<int, int> new_id_to_old;
 
@@ -132,18 +132,18 @@ void match_sequence() {
     while (Q.empty() == false) {
         int u = Q.front();
         Q.pop_front();
-        int i = 0;//TODO
+//        int i = 0;//TODO
         DR { cout << "Bede probowal przerobic : " << u << "(" << T[u].size() << ")" << endl; }
-        while (T[u].size() < b[u] && i < N[u].size()) {
+        while (T[u].size() < b[u] && it[u] < N[u].size()) {
             DR {
-                cout << " Przerabiam " << u << " sprawdzam czy moggo sparowac z " << destin(u, N[u][i])
+                cout << " Przerabiam " << u << " sprawdzam czy moggo sparowac z " << destin(u, N[u][it[u]])
                      << " ilosc sasiadow = " << N[u].size() << endl;
             }
-            if (check_match(u, N[u][i])) {
-                update(u, N[u][i]);
+            if (check_match(u, N[u][it[u]])) {
+                update(u, N[u][it[u]]);
             }
             DR { cout << "indeed updated\n"; }
-            i++;
+            it[u]++;
         }
         DR { cout << "zawartosc kolejki : "; }
         DR {
@@ -181,9 +181,10 @@ int skaluj_krawedzie(vector <kraw> &old_id, map<int, int> &map_old_to_new, map<i
         }
     }
 
-    for (auto k : old_id) {
+    for (auto &k : old_id) {
         get<1>(k) = map_old_to_new[get<1>(k)];
         get<2>(k) = map_old_to_new[get<2>(k)];
+//        DR cout <<"("<<get<1>(k)<<","<<get<2>(k)<<")->(\n;";//<<map_old_to_new[get<1>(k)]<<","<<map_old_to_new[get<2>(k)]<<")\n";
     }
 
     return new_id;
@@ -210,18 +211,23 @@ void create_graph(char *file, int b_limit) {
     }
 
     n = skaluj_krawedzie(readed, old_id_to_new, new_id_to_old);
-    DR { cout << "n = " << n << endl; }
+    for (auto k : readed) {
+        DR cout << "(" << get<1>(k) << "," << get<2>(k) << ")\n";
+    }
     b.resize(n + 1);
     for (int i = 0; i < n; i++) {
         b[i] = bvalue(method, new_id_to_old[i]);
-        DR { cout << "kolejne b: " << bvalue(method, new_id_to_old[i]) << "  " << i << "\n"; }
+//        DR { cout << "kolejne b: " << bvalue(method, new_id_to_old[i]) << "  " << i << "\n"; }
     }
 
+    DR { cout << "n = " << n << endl; }
+    DR cout << "Wczytalem b\n\n\n\n";
     N.resize(n + 1);
     T.resize(n + 1);
     S.resize(n + 1);
-
+    it.resize(n+1);
     for (auto k : readed) {
+        DR cout <<"("<<get<1>(k)<<","<<get<2>(k)<<")\n";
         N[get<1>(k)].push_back(k);
         N[get<2>(k)].push_back(k);
     }
@@ -241,6 +247,9 @@ void clear_graph() {
     }
     for (auto a:T) {
         a.clear();
+    }
+    for(auto a:it){
+        a=0;
     }
     in_Q.clear();
 }
