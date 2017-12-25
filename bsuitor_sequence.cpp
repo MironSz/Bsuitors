@@ -7,6 +7,7 @@
 #include <list>
 #include <algorithm>
 #include "blimit2.cpp"
+#include <cassert>
 #include<map>
 
 #define DR if(0)
@@ -15,45 +16,18 @@ using namespace std;
 using kraw = tuple<int, int, int, int>;///koszt, from,to, id
 using kraw_lite = tuple<int, int, int>;///koszt,to, id
 
-kraw_lite make_lite(int from, kraw k){
-    if(get<1>(k) == from){
-        return make_tuple(get<0>(k),get<2>(k),get<3>(k));
+kraw_lite make_lite(int from, kraw k) {
+    if (get<1>(k) == from) {
+        return make_tuple(get<0>(k), get<2>(k), get<3>(k));
     }
-    return make_tuple(get<0>(k),get<1>(k),get<3>(k));
+    return make_tuple(get<0>(k), get<1>(k), get<3>(k));
 }
-kraw_lite make_lite(int from, kraw_lite k){
-    get<1>(k)=from;
+
+kraw_lite make_lite(int from, kraw_lite k) {
+    get<1>(k) = from;
     return k;
 }
 
-bool comp(kraw k1, kraw k2) {
-    if (get<0>(k1) != get<0>(k2)) {
-        return (get<0>(k1) > get<0>(k2));
-    }
-    if (get<1>(k1) != get<1>(k2)) {
-        return (get<1>(k1) < get<1>(k2));
-    }
-    if (get<2>(k1) != get<2>(k2)) {
-        return (get<2>(k1) < get<2>(k2));
-    }
-    return (get<3>(k1) > get<3>(k2));
-}
-bool comp2(kraw_lite k1, kraw_lite k2) {
-    if (get<0>(k1) != get<0>(k2)) {
-        return (get<0>(k1) > get<0>(k2));
-    }
-    if (get<1>(k1) != get<1>(k2)) {
-        return (get<1>(k1) > get<1>(k2));
-    }
-    return (get<2>(k1) > get<2>(k2));
-}
-
-struct cmp_set {
-    bool operator()(kraw k1, kraw k2) {
-        return comp(k1, k2);
-    }
-
-};
 
 int destin(int from, kraw k) {
     if (get<2>(k) == from) {
@@ -61,28 +35,51 @@ int destin(int from, kraw k) {
     }
     return get<2>(k);
 }
-int destin( kraw_lite k) {
+
+
+int destin(kraw_lite k) {
     return get<1>(k);
 }
 
 int price(kraw k) {
     return get<0>(k);
 }
+
 int price(kraw_lite k) {
     return get<0>(k);
 }
 
-vector <vector<kraw_lite>> N;//pososrtowane krawędzie po koszcie//TODO lite
-vector<int> b;
+map<int, int> old_id_to_new;
 
-vector <set<kraw_lite>> S;//ci ktorzy mi sie oświadczyli
-vector <int> T;//ci którym się oświadczyłem, sama ich liczba
+map<int, int> new_id_to_old;
+
+bool comp(kraw_lite k1, kraw_lite k2) {
+    if (get<0>(k1)!= get<0>(k2)) {
+        return (get<0>(k1) > get<0>(k2));
+    }
+    if (get<1>(k1) != get<1>(k2)) {
+        return new_id_to_old[get<1>(k1)] > new_id_to_old[get<1>(k2)];
+    }
+    return true;
+}
+vector<vector<kraw_lite>> N;//pososrtowane krawędzie po koszcie//TODO lite
+
+vector<int> b;
+vector<set<kraw_lite>> S;//ci ktorzy mi sie oświadczyli
+vector<int> T;//ci którym się oświadczyłem, sama ich liczba
 list<int> Q;//Q
 set<int> in_Q;
 int n, method;
 vector<int> it;
-map<int, int> old_id_to_new;
-map<int, int> new_id_to_old;
+bool comp2(kraw_lite k1, kraw_lite k2) {
+    if (get<0>(k1) != get<0>(k2)) {
+        return (get<0>(k1) > get<0>(k2));
+    }
+    if (get<1>(k1) != get<1>(k2)) {
+        return new_id_to_old[get<1>(k1)] < new_id_to_old[get<1>(k2)];
+    }
+    return true;
+}
 
 void update(int from, kraw_lite &k) {
     DR { cout << "UPDATE, ilosc adorujacych cel: " << S[destin(k)].size() << endl; }
@@ -94,32 +91,31 @@ void update(int from, kraw_lite &k) {
                  << " zaczyna\n";
         }
         if (in_Q.find(lost_adorator) == in_Q.end()) {//ten który przestaje adorować
-            Q.push_back(lost_adorator);
             in_Q.insert(lost_adorator);
         }
         S[destin(k)].erase(deleted);
-        T[lost_adorator]--;
+        Q.push_back(lost_adorator);
+        if(get<2>(k) > -1)
+            T[lost_adorator]--;
     }
     T[from]++;
-    S[destin(k)].insert(make_lite(from,k));
+    S[destin(k)].insert(make_lite(from, k));
     DR { cout << "Updated\n"; }
 }
 
 kraw_lite last(int u) {
     if (S[u].size() < b[u]) {
-        return make_tuple(0, INT32_MAX, INT32_MAX);
+        return make_tuple(-1, -1, -1);
     }
     return *(S[u].begin());
 }
 
 bool check_match(int from, kraw_lite &k) {
-    kraw_lite v = last(destin(k));
-    DR { cout << "      sprawdzam match " << from << " z " << destin( k) << " last:" << price(v) << endl; }
-    if (v < k) {
-        return true;
-    } else {
+    if(b[destin(k)] == 0)
         return false;
-    }
+    kraw_lite v = last(destin(k));
+    DR { cout << "      sprawdzam match " << from << " z " << destin(k) << " last:" << price(v) << endl; }
+    return comp(k, v);
 }
 
 int count_result() {
@@ -129,32 +125,29 @@ int count_result() {
             result += price(k2);
         }
     }
+    assert(result%2==0);
     return result / 2;
 }
 
 void match_sequence() {
-//    for (auto k : N) {
-//        sort(k.begin(), k.end());
-//    }
-
     {//To tworzy kolejkę Q
         set<int> already_added;
         for (int i = 0; i < N.size(); i++) {
             for (kraw_lite k:N[i]) {
-                if (already_added.find(get<1>(k)) == already_added.end()) {
+                if (already_added.find(get<1>(k)) == already_added.end() && b[get<1>(k)]) {
                     already_added.insert(get<1>(k));
                     Q.push_back(get<1>(k));
                     DR { cout << "DODALEM " << get<1>(k) << endl; }
                 }
             }
         }
-        in_Q=already_added;
+        in_Q = already_added;
     }
 
     while (Q.empty() == false) {
         int u = Q.front();
         Q.pop_front();
-        DR { cout << "Bede probowal przerobic : " << u << "(" << T[u]<< ")" << endl; }
+        DR { cout << "Bede probowal przerobic : " << u << "(" << T[u] << ")" << endl; }
         while (T[u] < b[u] && it[u] < N[u].size()) {
             DR {
                 cout << " Przerabiam " << u << " sprawdzam czy moggo sparowac z " << destin(N[u][it[u]])
@@ -174,14 +167,14 @@ void match_sequence() {
         }
         DR { cout << endl; }
         if (in_Q.find(u) != in_Q.end()) {
-            DR cout <<"Erasing from in_Q\n";
+            DR cout << "Erasing from in_Q\n";
             in_Q.erase(in_Q.find(u));
         }
         DR { cout << endl << endl; }
     }
 }
 
-int skaluj_krawedzie(vector <kraw> &old_id, map<int, int> &map_old_to_new, map<int, int> &map_new_to_old) {
+int skaluj_krawedzie(vector<kraw> &old_id, map<int, int> &map_old_to_new, map<int, int> &map_new_to_old) {
     int prev = -1;
     int new_id = 0;
     vector<int> existing_nodes;
@@ -203,7 +196,8 @@ int skaluj_krawedzie(vector <kraw> &old_id, map<int, int> &map_old_to_new, map<i
     }
 
     for (auto &k : old_id) {
-        DR cout <<"("<<get<1>(k)<<","<<get<2>(k)<<")->(;"<<map_old_to_new[get<1>(k)]<<","<<map_old_to_new[get<2>(k)]<<")\n";
+        DR cout << "(" << get<1>(k) << "," << get<2>(k) << ")->(;" << map_old_to_new[get<1>(k)] << ","
+                << map_old_to_new[get<2>(k)] << ")\n";
         get<1>(k) = map_old_to_new[get<1>(k)];
         get<2>(k) = map_old_to_new[get<2>(k)];
     }
@@ -211,10 +205,18 @@ int skaluj_krawedzie(vector <kraw> &old_id, map<int, int> &map_old_to_new, map<i
     return new_id;
 }
 
+
+void generate_b() {
+    for (int i = 0; i < n; i++) {
+        b[i] = bvalue(method, new_id_to_old[i]);
+        DR { cout << "kolejne b: " << bvalue(method, new_id_to_old[i]) << "  " << i << "  " << method << "\n"; }
+    }
+}
+
 void create_graph(char *file, int b_limit) {
     ifstream input_file(file);
     string bufor;
-    vector <kraw> readed;
+    vector<kraw> readed;
     vector<int> existing_nodes;
     int a, b1, c, d = 0;
     DR { cout << "Czy otworzylem plik?\n"; }
@@ -235,26 +237,24 @@ void create_graph(char *file, int b_limit) {
     for (auto k : readed) {
         DR cout << "(" << get<1>(k) << "," << get<2>(k) << ")\n";
     }
-    b.resize(n + 1);
-    for (int i = 0; i < n; i++) {
-        b[i] = bvalue(method, new_id_to_old[i]);
-//        DR { cout << "kolejne b: " << bvalue(method, new_id_to_old[i]) << "  " << i << "\n"; }
-    }
+    b.resize(n );
 
     DR { cout << "n = " << n << endl; }
     DR cout << "Wczytalem b\n\n\n\n";
-    N.resize(n + 1);
-    T.resize(n + 1);
-    S.resize(n + 1);
-    it.resize(n+1);
-    for (auto k : readed) {
-        DR cout <<"("<<get<1>(k)<<","<<get<2>(k)<<")\n";
-        N[get<1>(k)].push_back(make_lite(get<1>(k),k));
-        N[get<2>(k)].push_back(make_lite(get<2>(k),k));
-    }
+    N.resize(n );
+    T.resize(n );
+    S.resize(n );
+    it.resize(n );
+    for (auto k : readed)
+        if (price(k)) {
+            DR cout << "(" << get<1>(k) << "," << get<2>(k) << ")\n";
+            N[get<1>(k)].push_back(make_lite(get<1>(k), k));
+            if (get<1>(k) != get<2>(k))
+                N[get<2>(k)].push_back(make_lite(get<2>(k), k));
+        }
 
     for (auto &k : N) {
-        sort(k.begin(), k.end(),comp2);
+        sort(k.begin(), k.end(), comp);
         for (auto k2 : k) {
             DR { cout << get<0>(k2) << "  "; }
         }
@@ -263,24 +263,20 @@ void create_graph(char *file, int b_limit) {
 }
 
 void clear_graph() {
-    for (auto a:S) {
+    for (auto &a:S) {
         a.clear();
     }
-    for (auto a:T) {
-        a=0;
+    for (auto &a:T) {
+        a = 0;
     }
-    for(auto a:it){
-        a=0;
+    for (auto &a:it) {
+        a = 0;
+    }
+    for (auto &a:b) {
+        a = 0;
     }
     in_Q.clear();
     Q.clear();
-}
-
-void generate_b() {
-    for (int i = 0; i < n; i++) {
-        b[i] = bvalue(method, new_id_to_old[i]);
-        DR { cout << "kolejne b: " << bvalue(method, new_id_to_old[i]) << "  " << i << "  " << method << "\n"; }
-    }
 }
 
 void wypisz_adorowanych() {
