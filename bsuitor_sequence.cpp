@@ -50,7 +50,6 @@ int price(kraw_lite k) {
 }
 
 map<int, int> old_id_to_new;
-
 map<int, int> new_id_to_old;
 
 bool comp(kraw_lite k1, kraw_lite k2) {
@@ -60,31 +59,31 @@ bool comp(kraw_lite k1, kraw_lite k2) {
     if (get<1>(k1) != get<1>(k2)) {
         return new_id_to_old[get<1>(k1)] > new_id_to_old[get<1>(k2)];
     }
-    return true;
+    return false;
 }
+
+struct cmp_set {
+    bool operator()(const kraw_lite k1, const kraw_lite k2) const {
+        return comp(k1,k2);
+    }
+};
+
 vector<vector<kraw_lite>> N;//pososrtowane krawędzie po koszcie//TODO lite
 
 vector<int> b;
-vector<set<kraw_lite>> S;//ci ktorzy mi sie oświadczyli
+vector<set<kraw_lite,cmp_set>> S;//ci ktorzy mi sie oświadczyli
 vector<int> T;//ci którym się oświadczyłem, sama ich liczba
 list<int> Q;//Q
 set<int> in_Q;
 int n, method;
 vector<int> it;
-bool comp2(kraw_lite k1, kraw_lite k2) {
-    if (get<0>(k1) != get<0>(k2)) {
-        return (get<0>(k1) > get<0>(k2));
-    }
-    if (get<1>(k1) != get<1>(k2)) {
-        return new_id_to_old[get<1>(k1)] < new_id_to_old[get<1>(k2)];
-    }
-    return true;
-}
+
 
 void update(int from, kraw_lite &k) {
+    assert(from != destin(k));
     DR { cout << "UPDATE, ilosc adorujacych cel: " << S[destin(k)].size() << endl; }
     if (S[destin(k)].size() == b[destin(k)]) {
-        auto deleted = *(S[destin(k)].begin());
+        auto deleted = *(--S[destin(k)].end());
         int lost_adorator = destin(deleted);
         DR {
             cout << destin(deleted) << " przestaje adorowac " << destin(k) << "  ," << from
@@ -107,7 +106,7 @@ kraw_lite last(int u) {
     if (S[u].size() < b[u]) {
         return make_tuple(-1, -1, -1);
     }
-    return *(S[u].begin());
+    return *(--S[u].end());
 }
 
 bool check_match(int from, kraw_lite &k) {
@@ -115,7 +114,7 @@ bool check_match(int from, kraw_lite &k) {
         return false;
     kraw_lite v = last(destin(k));
     DR { cout << "      sprawdzam match " << from << " z " << destin(k) << " last:" << price(v) << endl; }
-    return comp(k, v);
+    return comp(make_lite(from,k), v);
 }
 
 int count_result() {
@@ -290,6 +289,19 @@ void wypisz_adorowanych() {
     }
 }
 
+void sprawdz_poprawnosc(){
+    int missing =0;
+    for(int i=0;i<n;i++){
+        for(auto k : S[i]) {
+            missing += (S[destin(k)].find(make_lite(i, k)) == S[destin(k)].end());
+            if( (S[destin(k)].find(make_lite(i, k)) == S[destin(k)].end()))
+                cout << "  from " << i << " to " << destin(k) << " price " << price(k) <<" (" <<
+                     b[i]<<","<<b[destin(k)]<< ") ->(" <<T[i]<<","<<T[destin(k)]<< endl;
+        }
+    }
+    cout << "Missing: "<<missing<<endl;
+}
+
 int main(int argc, char *argv[]) {
     if (argc != 4) {
         std::cerr << "usage: " << argv[0] << " thread-count inputfile b-limit" << std::endl;
@@ -305,6 +317,7 @@ int main(int argc, char *argv[]) {
         generate_b();
         match_sequence();
         cout << endl << count_result() << endl;
+        sprawdz_poprawnosc();
         clear_graph();
     }
 //    wypisz_adorowanych();
