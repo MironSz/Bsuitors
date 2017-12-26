@@ -28,14 +28,12 @@ kraw_lite make_lite(int from, kraw_lite k) {
     return k;
 }
 
-
 int destin(int from, kraw k) {
     if (get<2>(k) == from) {
         return get<1>(k);
     }
     return get<2>(k);
 }
-
 
 int destin(kraw_lite k) {
     return get<1>(k);
@@ -53,7 +51,7 @@ map<int, int> old_id_to_new;
 map<int, int> new_id_to_old;
 
 bool comp(kraw_lite k1, kraw_lite k2) {
-    if (get<0>(k1)!= get<0>(k2)) {
+    if (get<0>(k1) != get<0>(k2)) {
         return (get<0>(k1) > get<0>(k2));
     }
     if (get<1>(k1) != get<1>(k2)) {
@@ -64,42 +62,36 @@ bool comp(kraw_lite k1, kraw_lite k2) {
 
 struct cmp_set {
     bool operator()(const kraw_lite k1, const kraw_lite k2) const {
-        return comp(k1,k2);
+        return comp(k1, k2);
     }
 };
 
-vector<vector<kraw_lite>> N;//pososrtowane krawędzie po koszcie//TODO lite
+vector <vector<kraw_lite>> N;//pososrtowane krawędzie po koszcie//TODO lite
 
 vector<int> b;
-vector<set<kraw_lite,cmp_set>> S;//ci ktorzy mi sie oświadczyli
+vector <set<kraw_lite, cmp_set>> S;//ci ktorzy mi sie oświadczyli
 vector<int> T;//ci którym się oświadczyłem, sama ich liczba
 list<int> Q;//Q
 set<int> in_Q;
 int n, method;
 vector<int> it;
 
-
 void update(int from, kraw_lite &k) {
     assert(from != destin(k));
-    DR { cout << "UPDATE, ilosc adorujacych cel: " << S[destin(k)].size() << endl; }
     if (S[destin(k)].size() == b[destin(k)]) {
         auto deleted = *(--S[destin(k)].end());
         int lost_adorator = destin(deleted);
-        DR {
-            cout << destin(deleted) << " przestaje adorowac " << destin(k) << "  ," << from
-                 << " zaczyna\n";
-        }
         if (in_Q.find(lost_adorator) == in_Q.end()) {//ten który przestaje adorować
             in_Q.insert(lost_adorator);
         }
         S[destin(k)].erase(deleted);
         Q.push_back(lost_adorator);
-        if(get<2>(k) > -1)
+        if (get<2>(k) > -1) {
             T[lost_adorator]--;
+        }
     }
     T[from]++;
     S[destin(k)].insert(make_lite(from, k));
-    DR { cout << "Updated\n"; }
 }
 
 kraw_lite last(int u) {
@@ -110,11 +102,11 @@ kraw_lite last(int u) {
 }
 
 bool check_match(int from, kraw_lite &k) {
-    if(b[destin(k)] == 0)
+    if (b[destin(k)] == 0) {
         return false;
+    }
     kraw_lite v = last(destin(k));
-    DR { cout << "      sprawdzam match " << from << " z " << destin(k) << " last:" << price(v) << endl; }
-    return comp(make_lite(from,k), v);
+    return comp(make_lite(from, k), v);
 }
 
 int count_result() {
@@ -124,7 +116,7 @@ int count_result() {
             result += price(k2);
         }
     }
-    assert(result%2==0);
+    assert(result % 2 == 0);
     return result / 2;
 }
 
@@ -136,7 +128,6 @@ void match_sequence() {
                 if (already_added.find(get<1>(k)) == already_added.end() && b[get<1>(k)]) {
                     already_added.insert(get<1>(k));
                     Q.push_back(get<1>(k));
-                    DR { cout << "DODALEM " << get<1>(k) << endl; }
                 }
             }
         }
@@ -146,34 +137,19 @@ void match_sequence() {
     while (Q.empty() == false) {
         int u = Q.front();
         Q.pop_front();
-        DR { cout << "Bede probowal przerobic : " << u << "(" << T[u] << ")" << endl; }
         while (T[u] < b[u] && it[u] < N[u].size()) {
-            DR {
-                cout << " Przerabiam " << u << " sprawdzam czy moggo sparowac z " << destin(N[u][it[u]])
-                     << " ilosc sasiadow = " << N[u].size() << endl;
-            }
             if (check_match(u, N[u][it[u]])) {
                 update(u, N[u][it[u]]);
             }
-            DR { cout << "indeed updated\n"; }
             it[u]++;
         }
-        DR { cout << "zawartosc kolejki : "; }
-        DR {
-            for (auto a : Q) {
-                cout << a << " ";
-            }
-        }
-        DR { cout << endl; }
         if (in_Q.find(u) != in_Q.end()) {
-            DR cout << "Erasing from in_Q\n";
             in_Q.erase(in_Q.find(u));
         }
-        DR { cout << endl << endl; }
     }
 }
 
-int skaluj_krawedzie(vector<kraw> &old_id, map<int, int> &map_old_to_new, map<int, int> &map_new_to_old) {
+int skaluj_krawedzie(vector <kraw> &old_id, map<int, int> &map_old_to_new, map<int, int> &map_new_to_old) {
     int prev = -1;
     int new_id = 0;
     vector<int> existing_nodes;
@@ -195,8 +171,6 @@ int skaluj_krawedzie(vector<kraw> &old_id, map<int, int> &map_old_to_new, map<in
     }
 
     for (auto &k : old_id) {
-        DR cout << "(" << get<1>(k) << "," << get<2>(k) << ")->(;" << map_old_to_new[get<1>(k)] << ","
-                << map_old_to_new[get<2>(k)] << ")\n";
         get<1>(k) = map_old_to_new[get<1>(k)];
         get<2>(k) = map_old_to_new[get<2>(k)];
     }
@@ -204,60 +178,46 @@ int skaluj_krawedzie(vector<kraw> &old_id, map<int, int> &map_old_to_new, map<in
     return new_id;
 }
 
-
 void generate_b() {
     for (int i = 0; i < n; i++) {
         b[i] = bvalue(method, new_id_to_old[i]);
-        DR { cout << "kolejne b: " << bvalue(method, new_id_to_old[i]) << "  " << i << "  " << method << "\n"; }
     }
 }
 
 void create_graph(char *file, int b_limit) {
     ifstream input_file(file);
     string bufor;
-    vector<kraw> readed;
+    vector <kraw> readed;
     vector<int> existing_nodes;
     int a, b1, c, d = 0;
-    DR { cout << "Czy otworzylem plik?\n"; }
     if (input_file.is_open()) {
-        DR { cout << "TAK!\n"; }
         while (getline(input_file, bufor)) {
-            DR { cout << "Wczytalem linie: (" << bufor << ")\n"; }
 
             if (bufor[0] != '#') {
                 sscanf(&(bufor[0]), "%d%d%d", &a, &b1, &c);
-                DR { cout << "wczytalem a,b,c " << a << b1 << c << "\n"; }
                 readed.push_back(make_tuple(c, a, b1, d++));
             }
         }
     }
 
     n = skaluj_krawedzie(readed, old_id_to_new, new_id_to_old);
-    for (auto k : readed) {
-        DR cout << "(" << get<1>(k) << "," << get<2>(k) << ")\n";
-    }
-    b.resize(n );
+    b.resize(n);
 
-    DR { cout << "n = " << n << endl; }
-    DR cout << "Wczytalem b\n\n\n\n";
-    N.resize(n );
-    T.resize(n );
-    S.resize(n );
-    it.resize(n );
-    for (auto k : readed)
+    N.resize(n);
+    T.resize(n);
+    S.resize(n);
+    it.resize(n);
+    for (auto k : readed) {
         if (price(k)) {
-            DR cout << "(" << get<1>(k) << "," << get<2>(k) << ")\n";
             N[get<1>(k)].push_back(make_lite(get<1>(k), k));
-            if (get<1>(k) != get<2>(k))
+            if (get<1>(k) != get<2>(k)) {
                 N[get<2>(k)].push_back(make_lite(get<2>(k), k));
+            }
         }
+    }
 
     for (auto &k : N) {
         sort(k.begin(), k.end(), comp);
-        for (auto k2 : k) {
-            DR { cout << get<0>(k2) << "  "; }
-        }
-        DR { cout << endl; }
     }
 }
 
@@ -289,17 +249,18 @@ void wypisz_adorowanych() {
     }
 }
 
-void sprawdz_poprawnosc(){
-    int missing =0;
-    for(int i=0;i<n;i++){
-        for(auto k : S[i]) {
+void sprawdz_poprawnosc() {
+    int missing = 0;
+    for (int i = 0; i < n; i++) {
+        for (auto k : S[i]) {
             missing += (S[destin(k)].find(make_lite(i, k)) == S[destin(k)].end());
-            if( (S[destin(k)].find(make_lite(i, k)) == S[destin(k)].end()))
-                cout << "  from " << i << " to " << destin(k) << " price " << price(k) <<" (" <<
-                     b[i]<<","<<b[destin(k)]<< ") ->(" <<T[i]<<","<<T[destin(k)]<< endl;
+            if ((S[destin(k)].find(make_lite(i, k)) == S[destin(k)].end())) {
+                cout << "  from " << i << " to " << destin(k) << " price " << price(k) << " (" <<
+                     b[i] << "," << b[destin(k)] << ") ->(" << T[i] << "," << T[destin(k)] << endl;
+            }
         }
     }
-    cout << "Missing: "<<missing<<endl;
+    cout << "Missing: " << missing << endl;
 }
 
 int main(int argc, char *argv[]) {
@@ -321,8 +282,6 @@ int main(int argc, char *argv[]) {
         clear_graph();
     }
 //    wypisz_adorowanych();
-
-
 }
 
 /*
