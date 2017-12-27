@@ -16,6 +16,7 @@ using namespace std;
 
 using kraw = tuple<int, int, int, int>;///koszt, from,to, id
 using kraw_lite = tuple<int, int, int>;///koszt,to, id
+int method_in_thread[100];
 
 kraw_lite make_lite(int from, kraw k) {
     if (get<1>(k) == from) {
@@ -27,13 +28,6 @@ kraw_lite make_lite(int from, kraw k) {
 kraw_lite make_lite(int from, kraw_lite k) {
     get<1>(k) = from;
     return k;
-}
-
-int destin(int from, kraw k) {
-    if (get<2>(k) == from) {
-        return get<1>(k);
-    }
-    return get<2>(k);
 }
 
 int destin(kraw_lite k) {
@@ -56,7 +50,7 @@ bool comp(kraw_lite k1, kraw_lite k2) {
         return (get<0>(k1) > get<0>(k2));
     }
     if (get<1>(k1) != get<1>(k2)) {
-        return new_id_to_old[get<1>(k1)] > new_id_to_old[get<1>(k2)];
+        return get<1>(k1) > get<1>(k2);
     }
     return false;
 }
@@ -66,40 +60,56 @@ struct cmp_set {
         return comp(k1, k2);
     }
 };
+
 int n_threads;
-vector<condtion_variable> bariery;
-vector<mutex> ochrona_bariery;
+condition_variable *bariery;
+mutex *ochrona_bariery;
 vector<int> ile_czeka;
 vector<int> result_in_thread;
 
-void czekaj_na_pozostale(int ktora_bariera){
-    unique_lock<mutex> lk( ochrona_bariery[ktora_bariera] );
+void czekaj_na_pozostale(int ktora_bariera) {
+    unique_lock<mutex> lk(ochrona_bariery[ktora_bariera]);
     ile_czeka[ktora_bariera]++;
 
-    if(ile_czeka[ktora_bariera] != n_threads){
+    if (ile_czeka[ktora_bariera] != n_threads) {
         bariery[ktora_bariera].wait(lk);
-    } else{
+    } else {
         bariery[ktora_bariera].notify_all();
     }
 }
 
-vector <vector<kraw_lite>> N;//pososrtowane krawędzie po koszcie//TODO lite
+vector<vector<kraw_lite>> N;//pososrtowane krawędzie po koszcie//TODO lite
 
 vector<int> b;
-vator<mutex> ochrona1;
-vator<mutex> ochrona2;
-vector <set<kraw_lite, cmp_set>> S;//ci ktorzy mi sie oświadczyli
+mutex *ochrona1;
+mutex *ochrona2;
+vector<set<kraw_lite, cmp_set>> S;//ci ktorzy mi sie oświadczyli
 vector<int> T;//ci którym się oświadczyłem, sama ich liczba
 list<int> Q;//Q
-vector<list<int>> Q_in_thread;
+vector<list < int>>
+Q_in_thread;
 vector<set<int>> in_Q_in_thread;
 mutex ochrona_Q;
 set<int> in_Q;
 int n, method;
+int b_limit;
 vector<int> it;
 
-void update(int from, kraw_lite &k,int thread_id, int dodano ) {
-    assert(from != destin(k));
+
+pair<int, int> range(int thread_id) {
+//    cout << " thread id: " << thread_id << " threads: " << n_threads << endl;
+    int skok = n / n_threads;
+    int from = skok * thread_id;
+    int to = from + skok;
+    if (thread_id == n_threads - 1) {
+//        cout << " ostatni watek\n";
+        to = n;
+    }
+//    cout << "range : " << from << "  " << to << endl;
+    return {from, to};
+}
+
+void update(int from, kraw_lite &k, int thread_id, int dodano) {
     if (S[destin(k)].size() == b[destin(k)]) {
         auto deleted = *(--S[destin(k)].end());
         int lost_adorator = destin(deleted);
@@ -107,12 +117,13 @@ void update(int from, kraw_lite &k,int thread_id, int dodano ) {
             in_Q.insert(lost_adorator);
         }
         S[destin(k)].erase(deleted);
-        Q.push_back(lost_adorator);
+        Q_in_thread[thread_id].push_back(lost_adorator);
         if (get<2>(k) > -1) {
             T[lost_adorator]--;
         }
     }
     T[from]++;
+   DR printf("    thread %d %d bedzie adorowal %d\n" ,thread_id,from,destin(k));
     S[destin(k)].insert(make_lite(from, k));
 }
 
@@ -125,50 +136,49 @@ kraw_lite last(int u) {
 
 void count_result(int thread_id) {
     int result = 0;
-    auto r  =range(thread_id);
-    for (int i=r.first;i < r.second;i++) {
+    auto r = range(thread_id);
+    for (int i = r.first; i < r.second; i++) {
         for (auto k:S[i]) {
             result += price(k);
         }
     }
-    assert(result % 2 == 0);
-    result_in_thread[thread_id]=result;
+    result_in_thread[thread_id] = result;
+}
+
+bool check_match(int from, kraw_lite &k) {
+    DR printf("    %d sprawdza czy moze adorowac %d kosztem %d\n" ,from,destin(k),price(k));
+    if (b[destin(k)] == 0) {
+        return false;
+    }
+    kraw_lite v = last(destin(k));
+    return comp(make_lite(from, k), v);
 }
 
 void match(int thread_id) {
-    {//To tworzy kolejkę Q
-        set<int> already_added;
-        for (int i = 0; i < N.size(); i++) {
-            for (kraw_lite k:N[i]) {
-                if (already_added.find(get<1>(k)) == already_added.end() && b[get<1>(k)]) {
-                    already_added.insert(get<1>(k));
-                    Q.push_back(get<1>(k));
-                }
-            }
-        }
-        in_Q = already_added;
-    }
-
-    while (Q.empty() == false) {
-        int u = Q.front();
-        Q.pop_front();
+    while (Q_in_thread[thread_id].empty() == false) {
+        int u = Q_in_thread[thread_id].front();
+        Q_in_thread[thread_id].pop_front();
+        lock_guard<mutex> lck(ochrona1[u]);
+        DR printf("thread %d jest w %d (method %d)\n" ,thread_id,u,method_in_thread[thread_id]);
+        DR cout <<"Probuje adorowac "<<u<<endl;
         while (T[u] < b[u] && it[u] < N[u].size()) {
             if (check_match(u, N[u][it[u]])) {
-                update(u, N[u][it[u]]);
+                lock_guard<mutex> lck2(ochrona2[destin(N[u][it[u]])]);
+                DR printf("   thread %d zaczyna przerabiac %d (method %d)\n" ,thread_id,destin(N[u][it[u]]),method_in_thread[thread_id]);
+                if (check_match(u, N[u][it[u]])) {
+                    update(u, N[u][it[u]], thread_id, 0);
+                }
+                DR printf("   thread %d skonczyl przerabiac  %d method(%d)\n" ,thread_id,destin(N[u][it[u]]),method_in_thread[thread_id]);
             }
             it[u]++;
-        }
-        if (in_Q.find(u) != in_Q.end()) {
-            in_Q.erase(in_Q.find(u));
         }
     }
 }
 
-int skaluj_krawedzie(vector <kraw> &old_id, map<int, int> &map_old_to_new, map<int, int> &map_new_to_old) {
+int skaluj_krawedzie(vector<kraw> &old_id, map<int, int> &map_old_to_new, map<int, int> &map_new_to_old) {
     int prev = -1;
     int new_id = 0;
     vector<int> existing_nodes;
-
     for (auto id : old_id) {
         existing_nodes.push_back(get<1>(id));
         existing_nodes.push_back(get<2>(id));
@@ -194,16 +204,16 @@ int skaluj_krawedzie(vector <kraw> &old_id, map<int, int> &map_old_to_new, map<i
 }
 
 void generate_b(int thread_id) {
-    auto r  =range(thread_id);
+    auto r = range(thread_id);
     for (int i = r.first; i < r.second; i++) {
         b[i] = bvalue(method, new_id_to_old[i]);
     }
 }
 
-void create_graph(char *file, int b_limit) {
+void create_graph(char *file) {
     ifstream input_file(file);
     string bufor;
-    vector <kraw> readed;
+    vector<kraw> readed;
     vector<int> existing_nodes;
     int a, b1, c, d = 0;
     if (input_file.is_open()) {
@@ -217,12 +227,30 @@ void create_graph(char *file, int b_limit) {
     }
 
     n = skaluj_krawedzie(readed, old_id_to_new, new_id_to_old);
+    if (n < n_threads)
+        n_threads = n;
     b.resize(n);
 
     N.resize(n);
     T.resize(n);
     S.resize(n);
     it.resize(n);
+    ochrona1 = new mutex[n];
+    ochrona2 = new mutex[n];
+    bariery = new condition_variable[(b_limit+1) * 10];
+    ile_czeka.resize(b_limit * 10);
+    result_in_thread.resize(n_threads);
+
+    for (auto &a:ile_czeka)
+        a = 0;
+    ochrona_bariery = new mutex[(b_limit+1) * 10];
+
+    Q_in_thread.resize(n_threads);
+    in_Q_in_thread.resize(n_threads);
+
+    method = 0;
+
+
     for (auto k : readed) {
         if (price(k)) {
             N[get<1>(k)].push_back(make_lite(get<1>(k), k));
@@ -236,53 +264,90 @@ void create_graph(char *file, int b_limit) {
         sort(k.begin(), k.end(), comp);
     }
 }
-pair<int,int> range(int thread_id){
-    int skok = n/n_threads;
-    int from = skok*thread_id+1;
-    int to = from+skok;
-    if(thread_id == n_threads-1)
-        to=n;
-    return {from,to};
-}
+
 
 void clear_graph(int thread_id) {
     auto r = range(thread_id);
-    for(int i= r.first; i<r.second;i++) {
+    for (int i = r.first; i < r.second; i++) {
+        assert(Q_in_thread[thread_id].size() == 0);
         S[i].clear();
         T[i] = 0;
         it[i] = 0;
         b[i] = 0;
     }
-    if(thread_id == 0){
+    if (thread_id == 0) {
         in_Q.clear();
         Q.clear();
     }
-    result_in_thread[id]=0;
+    result_in_thread[thread_id] = 0;
 }
 
-void f(int thread_id){
-    int ktora_bariera=0;
-    while(method <=b_limit){
+void prepare_Q(int thread_id) {
+    //dodaj wszyskie z range do Q_in_thread
+    auto r = range(thread_id);
+    for (int i = r.first; i < r.second; i++) {
+        if (b[i]){
+            Q_in_thread[thread_id].push_back(i);
+        }
+    }
+
+}
+
+void wypisz_Q(int thread_id){
+    cout <<"W kolejce "<<thread_id<<"\n";
+    auto r = range(thread_id);
+    for(int a: Q_in_thread[thread_id]){
+        cout<<a<<" ";
+    }
+}
+
+void wypisz_wynik() {
+    int result = 0;
+    for (auto &a :result_in_thread) {
+        result += a;
+        a = 0;
+    }
+    cout << result/2 << endl;
+}
+
+void f(int thread_id) {
+    int ktora_bariera = 0;
+    while (method <= b_limit) {
+//        DR cout <<"Startuje petle dla "<<thread_id<<endl;
         generate_b(thread_id);
         prepare_Q(thread_id);
-        czekaj_na_pozostale(ktora_bariera);
-        ktora_bariera++;
+        czekaj_na_pozostale(++ktora_bariera);
+        DR printf(" minal bariere %d\n" ,thread_id);
+        method_in_thread[thread_id]++;
 
         match(thread_id);
-        czekaj_na_pozostale(ktora_bariera);
-        ktora_bariera++;
+        czekaj_na_pozostale(++ktora_bariera);
 
         count_result(thread_id);
-        czekaj_na_pozostale(ktora_bariera);
-        ktora_bariera++;
+        czekaj_na_pozostale(++ktora_bariera);
 
-        if(thread_id==0){
+        if (thread_id == 0) {
             wypisz_wynik();
             method++;
         }
-        clear_graph(thread_id);
-        czekaj_na_pozostale(ktora_bariera);
-        ktora_bariera++;
+
+        czekaj_na_pozostale(++ktora_bariera);
+
+        if(method <= b_limit) {
+            clear_graph(thread_id);
+        }
+        czekaj_na_pozostale(++ktora_bariera);
+    }
+}
+
+void wypisz_adorowanych() {
+    cout << "wierzchoki i adorowani:\n";
+    for (int i = 0; i < n; i++) {
+        cout << new_id_to_old[i] << " (" << b[i] << "  " << new_id_to_old[i] << ")" << " jest adorowana przez : ";
+        for (auto k : S[i]) {
+            cout << new_id_to_old[destin(k)] << " ";
+        }
+        cout << "\n";
     }
 }
 
@@ -292,17 +357,18 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    int thread_count = std::stoi(argv[1]);
-    int b_limit = std::stoi(argv[3]);
+    n_threads = std::stoi(argv[1]);
+    b_limit = std::stoi(argv[3]);
     std::string input_filename{argv[2]};
     method = 0;
-    create_graph(&(input_filename[0]), b_limit);
-    for (method = 0; method <= b_limit; method++) {
-        generate_b();
-        match_sequence();
-        cout << endl << count_result() << endl;
-        sprawdz_poprawnosc();
-        clear_graph();
-    }
-//    wypisz_adorowanych();
+
+    create_graph(&(input_filename[0]));
+    thread myThread[n_threads];
+
+    for(int i=1;i< n_threads;i++)
+        myThread[i]= thread(f,i);
+    f(0);
+    for(int i=1;i< n_threads;i++)
+        myThread[i].join();
+   // wypisz_adorowanych();
 }
