@@ -88,9 +88,9 @@ int * last_in_node_destin;
 int * last_in_node_koszt;
 vector<set<kraw_lite, cmp_set>> S;//ci ktorzy mi sie oświadczyli
 vector<int> T;//ci którym się oświadczyłem, sama ich liczba
-list<int> Q;//Q
-vector<list < int>>
-Q_in_thread;
+list<int> Q;//Wspola kolejka
+int Q_size;
+vector<list<int>> Q_in_thread;
 vector<set<int>> in_Q_in_thread;
 mutex ochrona_Q;
 set<int> in_Q;
@@ -133,7 +133,7 @@ void update(int from, kraw_lite &k, int thread_id, int dodano) {
         S[destin(k)].erase(deleted);
         add_to_Q(lost_adorator,thread_id,dodano);
         if (get<2>(k) > -1) {
-            T[lost_adorator]--;
+//            T[lost_adorator]--;
         }
     }
     T[from]++;
@@ -182,6 +182,7 @@ void match(int thread_id) {
         int u;
         take_from_Q(thread_id,u);
         lock_guard<mutex> lck(ochrona1[u]);
+        T[u]--;
         DR printf("thread %d jest w %d (method %d)\n" ,thread_id,u,method_in_thread[thread_id]);
         DR cout <<"Probuje adorowac "<<u<<endl;
         while (T[u] < b[u] && it[u] < N[u].size()) {
@@ -296,7 +297,7 @@ void clear_graph(int thread_id) {
     for (int i = r.first; i < r.second; i++) {
         assert(Q_in_thread[thread_id].size() == 0);
         S[i].clear();
-        T[i] = 0;
+        T[i] = 1;
         it[i] = 0;
         b[i] = 0;
         last_in_node_destin[i] = -1;
@@ -322,7 +323,6 @@ void prepare_Q(int thread_id) {
 
 void wypisz_Q(int thread_id){
     cout <<"W kolejce "<<thread_id<<"\n";
-    auto r = range(thread_id);
     for(int a: Q_in_thread[thread_id]){
         cout<<a<<" ";
     }
