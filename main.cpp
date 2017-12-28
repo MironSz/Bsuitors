@@ -13,6 +13,7 @@
 #include <condition_variable>
 
 #define DR if(0)
+#define USE_SHARED_Q true
 using namespace std;
 
 using kraw = tuple<int, int, int, int>;///koszt, from,to, id
@@ -69,7 +70,7 @@ vector<int> ile_czeka;
 vector<int> result_in_thread;
 
 void czekaj_na_pozostale(int ktora_bariera) {
-    unique_lock<mutex> lk(ochrona_bariery[ktora_bariera]);
+    unique_lock <mutex> lk(ochrona_bariery[ktora_bariera]);
     ile_czeka[ktora_bariera]++;
 
     if (ile_czeka[ktora_bariera] != n_threads) {
@@ -79,25 +80,26 @@ void czekaj_na_pozostale(int ktora_bariera) {
     }
 }
 
-vector<vector<kraw_lite>> N;//pososrtowane krawędzie po koszcie//TODO lite
+vector <vector<kraw_lite>> N;//pososrtowane krawędzie po koszcie//TODO lite
 
 vector<int> b;
 mutex *ochrona1;
 mutex *ochrona2;
-int * last_in_node_destin;
-int * last_in_node_koszt;
-vector<set<kraw_lite, cmp_set>> S;//ci ktorzy mi sie oświadczyli
+int *last_in_node_destin;
+int *last_in_node_koszt;
+vector <set<kraw_lite, cmp_set>> S;//ci ktorzy mi sie oświadczyli
 vector<int> T;//ci którym się oświadczyłem, sama ich liczba
 list<int> Q;//Wspola kolejka
+int threads_wating_for_node;
 int Q_size;
-vector<list<int>> Q_in_thread;
-vector<set<int>> in_Q_in_thread;
+condition_variable lacking_nodes;
+vector <list<int>> Q_in_thread;
+vector <set<int>> in_Q_in_thread;
 mutex ochrona_Q;
 set<int> in_Q;
 int n, method;
 int b_limit;
 vector<int> it;
-
 
 pair<int, int> range(int thread_id) {
 //    cout << " thread id: " << thread_id << " threads: " << n_threads << endl;
@@ -119,8 +121,19 @@ kraw_lite last(int u) {
     return *(--S[u].end());
 }
 
-void add_to_Q(int lost_adorator, int thread_id, int dodano){
-    Q_in_thread[thread_id].push_back(lost_adorator);
+
+//TODO trzeba zadbac, by watek po dodaniu do kolejki najpierw obudzil ten watek ktory juz zauwazyl brake node'a
+void add_to_Q(int lost_adorator, int thread_id, int dodano) {
+    if (Q_size == 0 && Q_in_thread[thread_id].empty() == false && USE_SHARED_Q) {
+        unique_lock <mutex> lck(ochrona_Q);
+        Q.push_back(lost_adorator);
+        Q_size++;
+        printf("thread %d just added a node\n");
+        if(threads_wating_for_node)
+            lacking_nodes.notify_one();
+    } else {
+        Q_in_thread[thread_id].push_back(lost_adorator);
+    }
 }
 
 void update(int from, kraw_lite &k, int thread_id, int dodano) {
@@ -131,15 +144,15 @@ void update(int from, kraw_lite &k, int thread_id, int dodano) {
 //            in_Q.insert(lost_adorator);
 //        }
         S[destin(k)].erase(deleted);
-        add_to_Q(lost_adorator,thread_id,dodano);
+        add_to_Q(lost_adorator, thread_id, dodano);
         if (get<2>(k) > -1) {
 //            T[lost_adorator]--;
         }
     }
     T[from]++;
-   DR printf("    thread %d %d bedzie adorowal %d\n" ,thread_id,from,destin(k));
+    DR { printf("    thread %d %d bedzie adorowal %d\n", thread_id, from, destin(k)); }
     S[destin(k)].insert(make_lite(from, k));
-    if(destin(k) >= 0){
+    if (destin(k) >= 0) {
         last_in_node_koszt[destin(k)] = price(last(destin(k)));
         last_in_node_destin[destin(k)] = destin(last(destin(k)));
     }
@@ -157,49 +170,89 @@ void count_result(int thread_id) {
 }
 
 bool check_match(int from, kraw_lite &k, bool is_locked) {
-    DR printf("    %d sprawdza czy moze adorowac %d kosztem %d\n" ,from,destin(k),price(k));
+    DR { printf("    %d sprawdza czy moze adorowac %d kosztem %d\n", from, destin(k), price(k)); }
     if (b[destin(k)] == 0) {
         return false;
     }
     kraw_lite v;
-    if(is_locked)
-         v = last(destin(k));
-    else
-        v = {last_in_node_koszt[destin(k)],last_in_node_destin[destin(k)],-1};
+    if (is_locked) {
+        v = last(destin(k));
+    } else {
+        v = {last_in_node_koszt[destin(k)], last_in_node_destin[destin(k)], -1};
+    }
 
     return comp(make_lite(from, k), v);
 }
 
-
-bool take_from_Q(int thread_id, int & u){
-    u= Q_in_thread[thread_id].front();
-    Q_in_thread[thread_id].pop_front();
-    return true;
+bool take_from_Q(int thread_id, int &u) {
+    if (Q_in_thread[thread_id].empty() == false) {
+        u = Q_in_thread[thread_id].front();
+        Q_in_thread[thread_id].pop_front();
+        return true;
+    }
+    if (USE_SHARED_Q == false) {
+        return false;
+    }
+    unique_lock <mutex> lck(ochrona_Q);
+    printf("thread %d wants to take a node from Q\n",thread_id);
+    if (Q_size == 0) {
+        threads_wating_for_node++;
+        if (threads_wating_for_node == n_threads) {
+            printf("  all nodes are gone, waking other threads\n");
+            lacking_nodes.notify_all();
+            return false;
+        }
+        printf("  waiting for a node\n");
+        lacking_nodes.wait(lck);
+    }
+    printf("thread %d woke up\n", thread_id);
+    if (Q_size > 0) {
+        printf("  found my node :)\n");
+        u = Q.front();
+        Q.pop_front();
+        Q_size--;
+        threads_wating_for_node--;
+        return true;
+    } else {
+        printf("  all nodes are gone\n");
+        lacking_nodes.notify_all();
+        return false;
+    }
 
 }
+
 void match(int thread_id) {
-    while (Q_in_thread[thread_id].empty() == false) {
+    while (true) {
         int u;
-        take_from_Q(thread_id,u);
-        lock_guard<mutex> lck(ochrona1[u]);
+        bool should_continue = take_from_Q(thread_id, u);
+        if (should_continue == false) {
+            break;
+        }
+        lock_guard <mutex> lck(ochrona1[u]);
         T[u]--;
-        DR printf("thread %d jest w %d (method %d)\n" ,thread_id,u,method_in_thread[thread_id]);
-        DR cout <<"Probuje adorowac "<<u<<endl;
+        DR { printf("thread %d jest w %d (method %d)\n", thread_id, u, method_in_thread[thread_id]); }
+        DR { cout << "Probuje adorowac " << u << endl; }
         while (T[u] < b[u] && it[u] < N[u].size()) {
             if (check_match(u, N[u][it[u]], 0)) {
-                lock_guard<mutex> lck2(ochrona2[destin(N[u][it[u]])]);
-                DR printf("   thread %d zaczyna przerabiac %d (method %d)\n" ,thread_id,destin(N[u][it[u]]),method_in_thread[thread_id]);
-                if (check_match(u, N[u][it[u]],1)) {
+                lock_guard <mutex> lck2(ochrona2[destin(N[u][it[u]])]);
+                DR {
+                    printf("   thread %d zaczyna przerabiac %d (method %d)\n", thread_id, destin(N[u][it[u]]),
+                           method_in_thread[thread_id]);
+                }
+                if (check_match(u, N[u][it[u]], 1)) {
                     update(u, N[u][it[u]], thread_id, 0);
                 }
-                DR printf("   thread %d skonczyl przerabiac  %d method(%d)\n" ,thread_id,destin(N[u][it[u]]),method_in_thread[thread_id]);
+                DR {
+                    printf("   thread %d skonczyl przerabiac  %d method(%d)\n", thread_id, destin(N[u][it[u]]),
+                           method_in_thread[thread_id]);
+                }
             }
             it[u]++;
         }
     }
 }
 
-int skaluj_krawedzie(vector<kraw> &old_id, map<int, int> &map_old_to_new, map<int, int> &map_new_to_old) {
+int skaluj_krawedzie(vector <kraw> &old_id, map<int, int> &map_old_to_new, map<int, int> &map_new_to_old) {
     int prev = -1;
     int new_id = 0;
     vector<int> existing_nodes;
@@ -237,7 +290,7 @@ void generate_b(int thread_id) {
 void create_graph(char *file) {
     ifstream input_file(file);
     string bufor;
-    vector<kraw> readed;
+    vector <kraw> readed;
     vector<int> existing_nodes;
     int a, b1, c, d = 0;
     if (input_file.is_open()) {
@@ -251,9 +304,11 @@ void create_graph(char *file) {
     }
 
     n = skaluj_krawedzie(readed, old_id_to_new, new_id_to_old);
-    if (n < n_threads)
+    if (n < n_threads) {
         n_threads = n;
+    }
 
+    threads_wating_for_node = n_threads;
     last_in_node_destin = new int[n];
     last_in_node_koszt = new int[n];
     b.resize(n);
@@ -263,19 +318,19 @@ void create_graph(char *file) {
     it.resize(n);
     ochrona1 = new mutex[n];
     ochrona2 = new mutex[n];
-    bariery = new condition_variable[(b_limit+1) * 10];
+    bariery = new condition_variable[(b_limit + 1) * 10];
     ile_czeka.resize(b_limit * 10);
     result_in_thread.resize(n_threads);
 
-    for (auto &a:ile_czeka)
+    for (auto &a:ile_czeka) {
         a = 0;
-    ochrona_bariery = new mutex[(b_limit+1) * 10];
+    }
+    ochrona_bariery = new mutex[(b_limit + 1) * 10];
 
     Q_in_thread.resize(n_threads);
     in_Q_in_thread.resize(n_threads);
 
     method = 0;
-
 
     for (auto k : readed) {
         if (price(k)) {
@@ -291,7 +346,6 @@ void create_graph(char *file) {
     }
 }
 
-
 void clear_graph(int thread_id) {
     auto r = range(thread_id);
     for (int i = r.first; i < r.second; i++) {
@@ -302,10 +356,14 @@ void clear_graph(int thread_id) {
         b[i] = 0;
         last_in_node_destin[i] = -1;
         last_in_node_koszt[i] = -1;
+
     }
     if (thread_id == 0) {
-        in_Q.clear();
-        Q.clear();
+        printf("thread waiting for node : %d\n" ,threads_wating_for_node);
+        assert(threads_wating_for_node == n_threads || USE_SHARED_Q == false);
+        threads_wating_for_node = 0;
+        assert(Q_size == 0 && Q.empty());
+//        Q.clear();
     }
     result_in_thread[thread_id] = 0;
 }
@@ -314,17 +372,17 @@ void prepare_Q(int thread_id) {
     //dodaj wszyskie z range do Q_in_thread
     auto r = range(thread_id);
     for (int i = r.first; i < r.second; i++) {
-        if (b[i]){
+        if (b[i]) {
             Q_in_thread[thread_id].push_back(i);
         }
     }
 
 }
 
-void wypisz_Q(int thread_id){
-    cout <<"W kolejce "<<thread_id<<"\n";
-    for(int a: Q_in_thread[thread_id]){
-        cout<<a<<" ";
+void wypisz_Q(int thread_id) {
+    cout << "W kolejce " << thread_id << "\n";
+    for (int a: Q_in_thread[thread_id]) {
+        cout << a << " ";
     }
 }
 
@@ -334,7 +392,7 @@ void wypisz_wynik() {
         result += a;
         a = 0;
     }
-    cout << result/2 << endl;
+    cout << result / 2 << endl;
 }
 
 void f(int thread_id) {
@@ -345,10 +403,10 @@ void f(int thread_id) {
         generate_b(thread_id);
         prepare_Q(thread_id);
         czekaj_na_pozostale(++ktora_bariera);
-        DR printf(" minal bariere %d\n" ,thread_id);
+        DR { printf(" minal bariere %d\n", thread_id); }
         method_in_thread[thread_id]++;
         match(thread_id);
-        printf("watek %d skonczyl matchowanie method = %d\n" ,thread_id, method);
+        printf("watek %d skonczyl matchowanie method = %d\n", thread_id, method);
         czekaj_na_pozostale(++ktora_bariera);
 
         count_result(thread_id);
@@ -388,12 +446,14 @@ int main(int argc, char *argv[]) {
     create_graph(&(input_filename[0]));
     thread myThread[n_threads];
 
-    for(int i=1;i< n_threads;i++)
-        myThread[i]= thread(f,i);
+    for (int i = 1; i < n_threads; i++) {
+        myThread[i] = thread(f, i);
+    }
     f(0);
-    for(int i=1;i< n_threads;i++)
+    for (int i = 1; i < n_threads; i++) {
         myThread[i].join();
-   // wypisz_adorowanych();
+    }
+    // wypisz_adorowanych();
     delete[] bariery;
     delete[] ochrona1;
     delete[] ochrona2;
