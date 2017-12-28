@@ -83,6 +83,8 @@ vector<vector<kraw_lite>> N;//pososrtowane krawędzie po koszcie//TODO lite
 vector<int> b;
 mutex *ochrona1;
 mutex *ochrona2;
+vector<int> last_in_node_destin;
+vector<int> last_in_node_koszt;
 vector<set<kraw_lite, cmp_set>> S;//ci ktorzy mi sie oświadczyli
 vector<int> T;//ci którym się oświadczyłem, sama ich liczba
 list<int> Q;//Q
@@ -109,6 +111,13 @@ pair<int, int> range(int thread_id) {
     return {from, to};
 }
 
+kraw_lite last(int u) {
+    if (S[u].size() < b[u]) {
+        return make_tuple(-1, -1, -1);
+    }
+    return *(--S[u].end());
+}
+
 void update(int from, kraw_lite &k, int thread_id, int dodano) {
     if (S[destin(k)].size() == b[destin(k)]) {
         auto deleted = *(--S[destin(k)].end());
@@ -125,13 +134,8 @@ void update(int from, kraw_lite &k, int thread_id, int dodano) {
     T[from]++;
    DR printf("    thread %d %d bedzie adorowal %d\n" ,thread_id,from,destin(k));
     S[destin(k)].insert(make_lite(from, k));
-}
-
-kraw_lite last(int u) {
-    if (S[u].size() < b[u]) {
-        return make_tuple(-1, -1, -1);
-    }
-    return *(--S[u].end());
+    last_in_node_koszt[destin(k)] = price(last(destin(k)));
+    last_in_node_destin[destin(k)] = destin(last(destin(k)));
 }
 
 void count_result(int thread_id) {
@@ -145,12 +149,17 @@ void count_result(int thread_id) {
     result_in_thread[thread_id] = result;
 }
 
-bool check_match(int from, kraw_lite &k) {
+bool check_match(int from, kraw_lite &k, bool is_locked) {
     DR printf("    %d sprawdza czy moze adorowac %d kosztem %d\n" ,from,destin(k),price(k));
     if (b[destin(k)] == 0) {
         return false;
     }
-    kraw_lite v = last(destin(k));
+    kraw_lite v;
+    if(is_locked)
+         v = last(destin(k));
+    else
+        v = {last_in_node_koszt[destin(k)],last_in_node_destin[destin(k)],-1};
+
     return comp(make_lite(from, k), v);
 }
 
@@ -162,10 +171,10 @@ void match(int thread_id) {
         DR printf("thread %d jest w %d (method %d)\n" ,thread_id,u,method_in_thread[thread_id]);
         DR cout <<"Probuje adorowac "<<u<<endl;
         while (T[u] < b[u] && it[u] < N[u].size()) {
-            if (check_match(u, N[u][it[u]])) {
+            if (check_match(u, N[u][it[u]], 0)) {
                 lock_guard<mutex> lck2(ochrona2[destin(N[u][it[u]])]);
                 DR printf("   thread %d zaczyna przerabiac %d (method %d)\n" ,thread_id,destin(N[u][it[u]]),method_in_thread[thread_id]);
-                if (check_match(u, N[u][it[u]])) {
+                if (check_match(u, N[u][it[u]],1)) {
                     update(u, N[u][it[u]], thread_id, 0);
                 }
                 DR printf("   thread %d skonczyl przerabiac  %d method(%d)\n" ,thread_id,destin(N[u][it[u]]),method_in_thread[thread_id]);
@@ -229,8 +238,10 @@ void create_graph(char *file) {
     n = skaluj_krawedzie(readed, old_id_to_new, new_id_to_old);
     if (n < n_threads)
         n_threads = n;
-    b.resize(n);
 
+    last_in_node_destin.resize(n);
+    last_in_node_koszt.resize(n);
+    b.resize(n);
     N.resize(n);
     T.resize(n);
     S.resize(n);
@@ -274,6 +285,8 @@ void clear_graph(int thread_id) {
         T[i] = 0;
         it[i] = 0;
         b[i] = 0;
+        last_in_node_destin[i] = -1;
+        last_in_node_koszt[i] = -1;
     }
     if (thread_id == 0) {
         in_Q.clear();
@@ -320,6 +333,7 @@ void f(int thread_id) {
         DR printf(" minal bariere %d\n" ,thread_id);
         method_in_thread[thread_id]++;
         match(thread_id);
+        printf("watek %d skonczyl matchowanie method = %d\n" ,thread_id, method);
         czekaj_na_pozostale(++ktora_bariera);
 
         count_result(thread_id);
