@@ -319,7 +319,6 @@ void f(int thread_id) {
         czekaj_na_pozostale(++ktora_bariera);
         DR printf(" minal bariere %d\n" ,thread_id);
         method_in_thread[thread_id]++;
-
         match(thread_id);
         czekaj_na_pozostale(++ktora_bariera);
 
@@ -371,4 +370,8 @@ int main(int argc, char *argv[]) {
     for(int i=1;i< n_threads;i++)
         myThread[i].join();
    // wypisz_adorowanych();
+    delete[] bariery;
+    delete[] ochrona1;
+    delete[] ochrona2;
+
 }
