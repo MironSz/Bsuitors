@@ -13,9 +13,8 @@
 #include <condition_variable>
 
 #define DR if(0)
-#define USE_SHARED_Q true
+#define USE_SHARED_Q false
 using namespace std;
-
 using kraw = tuple<int, int, int, int>;///koszt, from,to, id
 using kraw_lite = tuple<int, int, int>;///koszt,to, id
 int method_in_thread[100];
@@ -99,6 +98,7 @@ mutex ochrona_Q;
 set<int> in_Q;
 int n, method;
 int b_limit;
+int min_cost;
 vector<int> it;
 
 pair<int, int> range(int thread_id) {
@@ -359,7 +359,7 @@ void clear_graph(int thread_id) {
 
     }
     if (thread_id == 0) {
-        printf("thread waiting for node : %d\n" ,threads_wating_for_node);
+//        printf("thread waiting for node : %d\n" ,threads_wating_for_node);
         assert(threads_wating_for_node == n_threads || USE_SHARED_Q == false);
         threads_wating_for_node = 0;
         assert(Q_size == 0 && Q.empty());
@@ -406,7 +406,7 @@ void f(int thread_id) {
         DR { printf(" minal bariere %d\n", thread_id); }
         method_in_thread[thread_id]++;
         match(thread_id);
-        printf("watek %d skonczyl matchowanie method = %d\n", thread_id, method);
+//        printf("watek %d skonczyl matchowanie method = %d\n", thread_id, method);
         czekaj_na_pozostale(++ktora_bariera);
 
         count_result(thread_id);
@@ -453,7 +453,7 @@ int main(int argc, char *argv[]) {
     for (int i = 1; i < n_threads; i++) {
         myThread[i].join();
     }
-    // wypisz_adorowanych();
+
     delete[] bariery;
     delete[] ochrona1;
     delete[] ochrona2;
