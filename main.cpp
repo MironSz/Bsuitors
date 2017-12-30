@@ -339,7 +339,6 @@ void create_graph(char *file) {
 void clear_graph(int thread_id) {
     auto r = range(thread_id);
     for (int i = r.first; i < r.second; i++) {
-        assert(Q_in_thread[thread_id].size() == 0);
         S[i].clear();
         T[i] = 1;
         it[i] = 0;
