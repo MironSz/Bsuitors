@@ -312,13 +312,15 @@ void create_graph(char *file) {
     ochrona1 = new mutex[n];
     ochrona2 = new mutex[n];
     bariery = new condition_variable[(b_limit + 1) * 10];
-    ile_czeka.resize(b_limit * 10);
+    ile_czeka.resize((b_limit + 1) * 10);
     result_in_thread.resize(n_threads);
 
     for (auto &a:ile_czeka) {
         a = 0;
     }
     ochrona_bariery = new mutex[(b_limit + 1) * 10];
+
+    Q_in_thread.resize(n_threads);
 
     method = 0;
 
