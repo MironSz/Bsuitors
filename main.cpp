@@ -320,9 +320,6 @@ void create_graph(char *file) {
     }
     ochrona_bariery = new mutex[(b_limit + 1) * 10];
 
-    Q_in_thread.resize(n_threads);
-    in_Q_in_thread.resize(n_threads);
-
     method = 0;
 
     for (auto k : readed) {
