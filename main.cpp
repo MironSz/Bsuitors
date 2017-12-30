@@ -13,7 +13,8 @@
 #include <condition_variable>
 
 #define DR if(0)
-#define USE_SHARED_Q false
+#define USE_SHARED_Q true
+
 using namespace std;
 using kraw = tuple<int, int, int, int>;///koszt, from,to, id
 using kraw_lite = tuple<int, int, int>;///koszt,to, id
@@ -102,15 +103,12 @@ int min_cost;
 vector<int> it;
 
 pair<int, int> range(int thread_id) {
-//    cout << " thread id: " << thread_id << " threads: " << n_threads << endl;
     int skok = n / n_threads;
     int from = skok * thread_id;
     int to = from + skok;
     if (thread_id == n_threads - 1) {
-//        cout << " ostatni watek\n";
         to = n;
     }
-//    cout << "range : " << from << "  " << to << endl;
     return {from, to};
 }
 
@@ -124,11 +122,11 @@ kraw_lite last(int u) {
 
 //TODO trzeba zadbac, by watek po dodaniu do kolejki najpierw obudzil ten watek ktory juz zauwazyl brake node'a
 void add_to_Q(int lost_adorator, int thread_id, int dodano) {
-    if (Q_size == 0 && Q_in_thread[thread_id].empty() == false && USE_SHARED_Q) {
+    if (Q_size == 0  && Q_in_thread[thread_id].empty() == false && USE_SHARED_Q) {
         unique_lock <mutex> lck(ochrona_Q);
         Q.push_back(lost_adorator);
         Q_size++;
-        printf("thread %d just added a node\n");
+//        printf("thread %d just added a node\n", thread_id);
         if(threads_wating_for_node)
             lacking_nodes.notify_one();
     } else {
@@ -140,9 +138,6 @@ void update(int from, kraw_lite &k, int thread_id, int dodano) {
     if (S[destin(k)].size() == b[destin(k)]) {
         auto deleted = *(--S[destin(k)].end());
         int lost_adorator = destin(deleted);
-//        if (in_Q.find(lost_adorator) == in_Q.end()) {//ten który przestaje adorować
-//            in_Q.insert(lost_adorator);
-//        }
         S[destin(k)].erase(deleted);
         add_to_Q(lost_adorator, thread_id, dodano);
         if (get<2>(k) > -1) {
@@ -194,27 +189,30 @@ bool take_from_Q(int thread_id, int &u) {
         return false;
     }
     unique_lock <mutex> lck(ochrona_Q);
-    printf("thread %d wants to take a node from Q\n",thread_id);
+//    printf("thread %d wants to take a node from size %d waiting thread %d\n",thread_id,Q_size, threads_wating_for_node);
+    threads_wating_for_node++;
     if (Q_size == 0) {
-        threads_wating_for_node++;
         if (threads_wating_for_node == n_threads) {
-            printf("  all nodes are gone, waking other threads\n");
+//            printf("  all nodes are gone, waking other threads\n");
             lacking_nodes.notify_all();
             return false;
         }
-        printf("  waiting for a node\n");
+//        printf("  waiting for a node\n");
         lacking_nodes.wait(lck);
     }
-    printf("thread %d woke up\n", thread_id);
+//    printf("thread %d woke up\n", thread_id);
     if (Q_size > 0) {
-        printf("  found my node :)\n");
+//        printf("  found my node :)\n");
         u = Q.front();
         Q.pop_front();
         Q_size--;
-        threads_wating_for_node--;
+            threads_wating_for_node--;
+        if(Q_size) {
+            lacking_nodes.notify_one();
+        }
         return true;
     } else {
-        printf("  all nodes are gone\n");
+//        printf("  all nodes are gone\n");
         lacking_nodes.notify_all();
         return false;
     }
@@ -226,6 +224,7 @@ void match(int thread_id) {
         int u;
         bool should_continue = take_from_Q(thread_id, u);
         if (should_continue == false) {
+//            assert(Q.empty() && Q_in_thread[thread_id].empty());
             break;
         }
         lock_guard <mutex> lck(ochrona1[u]);
@@ -459,3 +458,12 @@ int main(int argc, char *argv[]) {
     delete[] ochrona2;
 
 }
+
+
+
+/*
+ * Possible speedups
+ * Równoważenie obciążenia!!!!!!!!!
+ * Inny sposób rozdiału wierzchołków
+ *
+ */
