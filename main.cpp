@@ -15,36 +15,36 @@
 #define DR if(0)
 #define USE_SHARED_Q false
 using namespace std;
-using kraw = tuple<int, int, int, int>;///koszt, from,to, id
-using kraw_lite = tuple<int, int, int>;///koszt,to, id
+using kraw = tuple<unsigned int, unsigned int, unsigned int, unsigned int>;///koszt, from,to, id
+using kraw_lite = tuple<unsigned int, unsigned int, unsigned int>;///koszt,to, id
 int method_in_thread[100];
 
-kraw_lite make_lite(int from, kraw k) {
+kraw_lite make_lite(unsigned int from, kraw k) {
     if (get<1>(k) == from) {
         return make_tuple(get<0>(k), get<2>(k), get<3>(k));
     }
     return make_tuple(get<0>(k), get<1>(k), get<3>(k));
 }
 
-kraw_lite make_lite(int from, kraw_lite k) {
+kraw_lite make_lite(unsigned int from, kraw_lite k) {
     get<1>(k) = from;
     return k;
 }
 
-int destin(kraw_lite k) {
+unsigned int destin(kraw_lite k) {
     return get<1>(k);
 }
 
-int price(kraw k) {
+unsigned int price(kraw k) {
     return get<0>(k);
 }
 
-int price(kraw_lite k) {
+unsigned int price(kraw_lite k) {
     return get<0>(k);
 }
 
-map<int, int> old_id_to_new;
-map<int, int> new_id_to_old;
+map<unsigned int, unsigned int> old_id_to_new;
+map<unsigned int, unsigned int> new_id_to_old;
 
 bool comp(kraw_lite k1, kraw_lite k2) {
     if (get<0>(k1) != get<0>(k2)) {
@@ -62,11 +62,11 @@ struct cmp_set {
     }
 };
 
-int n_threads;
+unsigned int n_threads;
 condition_variable *bariery;
 mutex *ochrona_bariery;
-vector<int> ile_czeka;
-vector<int> result_in_thread;
+vector<unsigned int> ile_czeka;
+vector<unsigned int> result_in_thread;
 
 void czekaj_na_pozostale(int ktora_bariera) {
     unique_lock <mutex> lk(ochrona_bariery[ktora_bariera]);
@@ -81,73 +81,64 @@ void czekaj_na_pozostale(int ktora_bariera) {
 
 vector <vector<kraw_lite>> N;//pososrtowane krawędzie po koszcie//TODO lite
 
-vector<int> b;
+vector<unsigned int> b;
 mutex *ochrona1;
 mutex *ochrona2;
-int *last_in_node_destin;
-int *last_in_node_koszt;
+unsigned int *last_in_node_destin;
+unsigned int *last_in_node_koszt;
 vector <set<kraw_lite, cmp_set>> S;//ci ktorzy mi sie oświadczyli
-vector<int> T;//ci którym się oświadczyłem, sama ich liczba
-list<int> Q;//Wspola kolejka
-int threads_wating_for_node;
-int Q_size;
+vector<unsigned int> T;//ci którym się oświadczyłem, sama ich liczba
+list<unsigned int> Q;//Wspola kolejka
+unsigned int threads_wating_for_node;
+unsigned int Q_size;
 condition_variable lacking_nodes;
-vector <list<int>> Q_in_thread;
-vector <set<int>> in_Q_in_thread;
+vector <list<unsigned int>> Q_in_thread;
+vector <set<unsigned int>> in_Q_in_thread;
 mutex ochrona_Q;
-set<int> in_Q;
-int n, method;
-int b_limit;
-int min_cost;
-vector<int> it;
+set<unsigned int> in_Q;
+unsigned int n, method;
+unsigned int b_limit;
+unsigned int min_cost;
+vector<unsigned int> it;
 
-pair<int, int> range(int thread_id) {
-//    cout << " thread id: " << thread_id << " threads: " << n_threads << endl;
-    int skok = n / n_threads;
-    int from = skok * thread_id;
-    int to = from + skok;
+vector<unsigned int> order_of_nodes;
+
+pair<unsigned int, unsigned int> range(unsigned int thread_id) {
+    unsigned int skok = n / n_threads;
+    unsigned int from = skok * thread_id;
+    unsigned int to = from + skok;
     if (thread_id == n_threads - 1) {
-//        cout << " ostatni watek\n";
         to = n;
     }
-//    cout << "range : " << from << "  " << to << endl;
     return {from, to};
 }
 
-kraw_lite last(int u) {
+kraw_lite last(unsigned int u) {
     if (S[u].size() < b[u]) {
-        return make_tuple(-1, -1, -1);
+        return make_tuple(0, 0, 0);
     }
     return *(--S[u].end());
 }
 
-
-//TODO trzeba zadbac, by watek po dodaniu do kolejki najpierw obudzil ten watek ktory juz zauwazyl brake node'a
-void add_to_Q(int lost_adorator, int thread_id, int dodano) {
+void add_to_Q(unsigned int lost_adorator, int thread_id, unsigned int dodano) {
     if (Q_size == 0 && Q_in_thread[thread_id].empty() == false && USE_SHARED_Q) {
         unique_lock <mutex> lck(ochrona_Q);
         Q.push_back(lost_adorator);
         Q_size++;
-        printf("thread %d just added a node\n");
-        if(threads_wating_for_node)
+        if (threads_wating_for_node) {
             lacking_nodes.notify_one();
+        }
     } else {
         Q_in_thread[thread_id].push_back(lost_adorator);
     }
 }
 
-void update(int from, kraw_lite &k, int thread_id, int dodano) {
+void update(unsigned int from, kraw_lite &k, int thread_id, unsigned int dodano) {
     if (S[destin(k)].size() == b[destin(k)]) {
         auto deleted = *(--S[destin(k)].end());
-        int lost_adorator = destin(deleted);
-//        if (in_Q.find(lost_adorator) == in_Q.end()) {//ten który przestaje adorować
-//            in_Q.insert(lost_adorator);
-//        }
+        unsigned int lost_adorator = destin(deleted);
         S[destin(k)].erase(deleted);
         add_to_Q(lost_adorator, thread_id, dodano);
-        if (get<2>(k) > -1) {
-//            T[lost_adorator]--;
-        }
     }
     T[from]++;
     DR { printf("    thread %d %d bedzie adorowal %d\n", thread_id, from, destin(k)); }
@@ -158,10 +149,10 @@ void update(int from, kraw_lite &k, int thread_id, int dodano) {
     }
 }
 
-void count_result(int thread_id) {
-    int result = 0;
+void count_result(unsigned int thread_id) {
+    unsigned int result = 0;
     auto r = range(thread_id);
-    for (int i = r.first; i < r.second; i++) {
+    for (unsigned int i = r.first; i < r.second; i++) {
         for (auto k:S[i]) {
             result += price(k);
         }
@@ -169,7 +160,7 @@ void count_result(int thread_id) {
     result_in_thread[thread_id] = result;
 }
 
-bool check_match(int from, kraw_lite &k, bool is_locked) {
+bool check_match(unsigned int from, kraw_lite &k, bool is_locked) {
     DR { printf("    %d sprawdza czy moze adorowac %d kosztem %d\n", from, destin(k), price(k)); }
     if (b[destin(k)] == 0) {
         return false;
@@ -178,13 +169,13 @@ bool check_match(int from, kraw_lite &k, bool is_locked) {
     if (is_locked) {
         v = last(destin(k));
     } else {
-        v = {last_in_node_koszt[destin(k)], last_in_node_destin[destin(k)], -1};
+        v = {last_in_node_koszt[destin(k)], last_in_node_destin[destin(k)],0};
     }
 
     return comp(make_lite(from, k), v);
 }
 
-bool take_from_Q(int thread_id, int &u) {
+bool take_from_Q(unsigned int thread_id, unsigned int &u) {
     if (Q_in_thread[thread_id].empty() == false) {
         u = Q_in_thread[thread_id].front();
         Q_in_thread[thread_id].pop_front();
@@ -194,7 +185,7 @@ bool take_from_Q(int thread_id, int &u) {
         return false;
     }
     unique_lock <mutex> lck(ochrona_Q);
-    printf("thread %d wants to take a node from Q\n",thread_id);
+    printf("thread %d wants to take a node from Q\n", thread_id);
     if (Q_size == 0) {
         threads_wating_for_node++;
         if (threads_wating_for_node == n_threads) {
@@ -221,9 +212,9 @@ bool take_from_Q(int thread_id, int &u) {
 
 }
 
-void match(int thread_id) {
+void match(unsigned int thread_id) {
     while (true) {
-        int u;
+        unsigned int u;
         bool should_continue = take_from_Q(thread_id, u);
         if (should_continue == false) {
             break;
@@ -252,10 +243,11 @@ void match(int thread_id) {
     }
 }
 
-int skaluj_krawedzie(vector <kraw> &old_id, map<int, int> &map_old_to_new, map<int, int> &map_new_to_old) {
-    int prev = -1;
-    int new_id = 0;
-    vector<int> existing_nodes;
+int skaluj_krawedzie(vector <kraw> &old_id, map<unsigned int, unsigned int> &map_old_to_new,
+                     map<unsigned int, unsigned int> &map_new_to_old) {
+    long long prev = -1;
+    unsigned int new_id = 0;
+    vector<unsigned int> existing_nodes;
     for (auto id : old_id) {
         existing_nodes.push_back(get<1>(id));
         existing_nodes.push_back(get<2>(id));
@@ -263,7 +255,7 @@ int skaluj_krawedzie(vector <kraw> &old_id, map<int, int> &map_old_to_new, map<i
 
     sort(existing_nodes.begin(), existing_nodes.end());//Pararel
 
-    for (int id : existing_nodes) {
+    for (unsigned int id : existing_nodes) {
         if (id != prev) {
             map_old_to_new.insert(make_pair(id, new_id));
             map_new_to_old.insert(make_pair(new_id, id));
@@ -280,10 +272,10 @@ int skaluj_krawedzie(vector <kraw> &old_id, map<int, int> &map_old_to_new, map<i
     return new_id;
 }
 
-void generate_b(int thread_id) {
+void generate_b(unsigned int thread_id) {
     auto r = range(thread_id);
-    for (int i = r.first; i < r.second; i++) {
-        b[i] = bvalue(method, new_id_to_old[i]);
+    for (unsigned int i = r.first; i < r.second; i++) {
+        b[order_of_nodes[i]] = bvalue(method, new_id_to_old[order_of_nodes[i]]);
     }
 }
 
@@ -291,13 +283,13 @@ void create_graph(char *file) {
     ifstream input_file(file);
     string bufor;
     vector <kraw> readed;
-    vector<int> existing_nodes;
-    int a, b1, c, d = 0;
+    vector<unsigned int> existing_nodes;
+    unsigned int a, b1, c, d = 0;
     if (input_file.is_open()) {
         while (getline(input_file, bufor)) {
 
             if (bufor[0] != '#') {
-                sscanf(&(bufor[0]), "%d%d%d", &a, &b1, &c);
+                sscanf(&(bufor[0]), "%u%u%u", &a, &b1, &c);
                 readed.push_back(make_tuple(c, a, b1, d++));
             }
         }
@@ -307,10 +299,16 @@ void create_graph(char *file) {
     if (n < n_threads) {
         n_threads = n;
     }
+    order_of_nodes.resize(n);
+    for(unsigned int i=0; i <n; i++)
+        order_of_nodes[i]=i;
+    random_shuffle(order_of_nodes.begin(),order_of_nodes.end());
+//    reverse(order_of_nodes.begin(),order_of_nodes.end());
+
 
     threads_wating_for_node = n_threads;
-    last_in_node_destin = new int[n];
-    last_in_node_koszt = new int[n];
+    last_in_node_destin = new unsigned int[n];
+    last_in_node_koszt = new unsigned int[n];
     b.resize(n);
     N.resize(n);
     T.resize(n);
@@ -346,48 +344,43 @@ void create_graph(char *file) {
     }
 }
 
-void clear_graph(int thread_id) {
+void clear_graph(unsigned  int thread_id) {
     auto r = range(thread_id);
-    for (int i = r.first; i < r.second; i++) {
-        assert(Q_in_thread[thread_id].size() == 0);
+    for (unsigned int i = r.first; i < r.second; i++) {
         S[i].clear();
         T[i] = 1;
         it[i] = 0;
         b[i] = 0;
-        last_in_node_destin[i] = -1;
-        last_in_node_koszt[i] = -1;
-
+        last_in_node_destin[i] = 0;
+        last_in_node_koszt[i] = 0;
     }
     if (thread_id == 0) {
-//        printf("thread waiting for node : %d\n" ,threads_wating_for_node);
-        assert(threads_wating_for_node == n_threads || USE_SHARED_Q == false);
         threads_wating_for_node = 0;
-        assert(Q_size == 0 && Q.empty());
-//        Q.clear();
     }
     result_in_thread[thread_id] = 0;
 }
 
-void prepare_Q(int thread_id) {
+void prepare_Q(unsigned  int thread_id) {
     //dodaj wszyskie z range do Q_in_thread
     auto r = range(thread_id);
-    for (int i = r.first; i < r.second; i++) {
-        if (b[i]) {
-            Q_in_thread[thread_id].push_back(i);
+    for ( unsigned int i = r.first; i < r.second; i++) {
+        if (b[order_of_nodes[i]]) {
+//            printf("do kolejki %d dodaje %d   (%d)\n" ,thread_id,order_of_nodes[i],method_in_thread[thread_id]);
+            Q_in_thread[thread_id].push_back(order_of_nodes[i]);
         }
     }
 
 }
 
-void wypisz_Q(int thread_id) {
+void wypisz_Q(unsigned int thread_id) {
     cout << "W kolejce " << thread_id << "\n";
-    for (int a: Q_in_thread[thread_id]) {
+    for (auto  a: Q_in_thread[thread_id]) {
         cout << a << " ";
     }
 }
 
 void wypisz_wynik() {
-    int result = 0;
+    unsigned  int result = 0;
     for (auto &a :result_in_thread) {
         result += a;
         a = 0;
@@ -395,18 +388,17 @@ void wypisz_wynik() {
     cout << result / 2 << endl;
 }
 
-void f(int thread_id) {
+void f(unsigned int thread_id) {
     int ktora_bariera = 0;
     while (method <= b_limit) {
-//        DR cout <<"Startuje petle dla "<<thread_id<<endl;
         clear_graph(thread_id);
+        czekaj_na_pozostale(++ktora_bariera);
         generate_b(thread_id);
         prepare_Q(thread_id);
         czekaj_na_pozostale(++ktora_bariera);
-        DR { printf(" minal bariere %d\n", thread_id); }
-        method_in_thread[thread_id]++;
+
+        method_in_thread[thread_id]++;//Potrzebne tylko do debugu.
         match(thread_id);
-//        printf("watek %d skonczyl matchowanie method = %d\n", thread_id, method);
         czekaj_na_pozostale(++ktora_bariera);
 
         count_result(thread_id);
@@ -423,7 +415,7 @@ void f(int thread_id) {
 
 void wypisz_adorowanych() {
     cout << "wierzchoki i adorowani:\n";
-    for (int i = 0; i < n; i++) {
+    for (unsigned int i = 0; i < n; i++) {
         cout << new_id_to_old[i] << " (" << b[i] << "  " << new_id_to_old[i] << ")" << " jest adorowana przez : ";
         for (auto k : S[i]) {
             cout << new_id_to_old[destin(k)] << " ";
@@ -446,11 +438,11 @@ int main(int argc, char *argv[]) {
     create_graph(&(input_filename[0]));
     thread myThread[n_threads];
 
-    for (int i = 1; i < n_threads; i++) {
+    for (unsigned int i = 1; i < n_threads; i++) {
         myThread[i] = thread(f, i);
     }
     f(0);
-    for (int i = 1; i < n_threads; i++) {
+    for (unsigned int i = 1; i < n_threads; i++) {
         myThread[i].join();
     }
 
